@@ -6,6 +6,7 @@
 #include<time.h>
 #include<Windows.h>
 #include<conio.h>
+#include<math.h>
 
 #define LINE 25
 #define COLUMN 101
@@ -17,6 +18,7 @@
 #define MAN 5
 #define OrginalLine 1
 #define OrginalColumn 1
+
 typedef struct{
     int x;
     int y;
@@ -146,6 +148,7 @@ void game_time(){
     mate[current_Line][current_Column]=MAN;
     while(mate[LINE-2][COLUMN-2]==Target){
         print_mate();
+        printf("Please push asdw to control the '5'man\n");
         Sleep(50);
         char keyboard = getch();
         move(keyboard);
@@ -193,6 +196,193 @@ void move(char keyboard){
             move(getch());
     }
 }
+
+
+
+//GA
+//基本定义
+#define GENE_LENGTH 3000
+#define POPULATION_SIZE 500
+#define CROSSOVER_RATE 85
+#define MUTATE_RATE 5
+const int ELITE_COUNT=0.1*POPULATION_SIZE;
+typedef enum{left=0,right,up,down}WAY;
+typedef struct{
+    int genes[GENE_LENGTH];
+    bool arrival_target;
+    int fitness;
+    int path_length;
+    int eventual_line,eventual_column;
+}INDIVIDUAL;
+typedef struct{
+    INDIVIDUAL individual[POPULATION_SIZE];
+    INDIVIDUAL best_individual;
+    int generation;
+}POPULATION;
+//
+//函数原型
+void population_initialization(POPULATION*population);
+void fitness_evaluate(INDIVIDUAL*individual);
+void crossover(INDIVIDUAL*parent_1,INDIVIDUAL*parent_2,INDIVIDUAL*child);
+void mutate(INDIVIDUAL*individual);
+int compare_individual(const void*a,const void*b);
+void find_best_individual(POPULATION*population);
+void section(POPULATION*population);
+void evaluate_population(POPULATION*population);
+//
+//函数定义
+void population_initialization(POPULATION*population){
+    for(int i=0;i<POPULATION_SIZE;i++){
+        for(int j=0;j<GENE_LENGTH;j++){
+            int way=rand()%4;
+            population->individual[i].genes[j]=way;
+        }
+        population->individual[i].arrival_target=false;
+        population->individual[i].fitness=0;
+        population->individual[i].path_length=0;
+        population->individual[i].eventual_line=0;
+        population->individual[i].eventual_column=0;
+    }
+}
+
+void fitness_evaluate(INDIVIDUAL*individual){
+    int visit[LINE][COLUMN]={0};
+    int simulate_line=OrginalLine,simulate_column=OrginalColumn;
+    visit[simulate_line][simulate_column]=1;
+    for(int i=0;i<GENE_LENGTH;i++){
+        int temp_line=simulate_line,temp_column=simulate_column;
+        switch(individual->genes[i]){
+            case left:  temp_column--;  break;
+            case right: temp_column++;  break;
+            case up:    temp_line--;    break;
+            case down:  temp_line++;    break;
+        }
+        if(mate[temp_line][temp_column]==ROAD||mate[temp_line][temp_column]==Target){
+            simulate_line=temp_line,simulate_column=temp_column;
+            visit[simulate_line][simulate_column]++;
+            if(visit[simulate_line][simulate_column]==Target){
+                individual->arrival_target=true;
+            }
+        }else{
+            visit[simulate_line][simulate_column]++;
+            break;
+        }
+    }
+    individual->eventual_line=simulate_line;
+    individual->eventual_column=simulate_column;
+    int revisit=0,uniquevisit=0;
+    for(int i=0;i<LINE;i++){
+        for(int j=0;j<COLUMN;j++){
+            if(visit[i][j]>0){
+                uniquevisit++;
+            }else if(visit[i][j]>1){
+                revisit+=visit[i][j]-1;
+            }
+        }
+    }
+    individual->path_length=uniquevisit;
+    int distance=pow(COLUMN-2-simulate_column,2)+(LINE-2-simulate_line,2);
+    if(individual->arrival_target){
+        individual->fitness=10000-individual->path_length-10*revisit;
+    }else{
+        individual->fitness=5000-distance-individual->path_length-12*revisit;
+    }
+}
+
+void crossover(INDIVIDUAL*parent_1,INDIVIDUAL*parent_2,INDIVIDUAL*child){
+    int whether_crossover=rand()%100;
+    if(whether_crossover>CROSSOVER_RATE){
+        if(parent_1->fitness>=parent_2->fitness){
+            for(int i=0;i<GENE_LENGTH;i++){
+                child->genes[i]=parent_1->genes[i];
+            }
+        }else{
+            for(int i=0;i<GENE_LENGTH;i++){
+                child->genes[i]=parent_2->genes[i];
+            }
+        }
+        return ;
+    }
+    int point_1=rand()%(GENE_LENGTH/2);
+    int point_2=point_1+rand()%(GENE_LENGTH/2);
+    for(int i=0;i<GENE_LENGTH;i++){
+        if(i<point_1||i>point_2){
+            child->genes[i]=parent_1->genes[i];
+        }else{
+            child->genes[i]=parent_2->genes[i];
+        }
+    }
+}
+
+void mutate(INDIVIDUAL*individual){
+    for(int i=0;i<GENE_LENGTH;i++){
+        int whether_mutate=rand()%100;
+        if(whether_mutate<MUTATE_RATE){
+            int new_way=rand()%4;
+            individual->genes[i]=new_way;
+        }
+    }
+}
+
+int compare_individual(const void*a,const void*b){
+    INDIVIDUAL*individual_a=(INDIVIDUAL*)a;
+    INDIVIDUAL*individual_b=(INDIVIDUAL*)b;
+    if(individual_a->arrival_target&&!individual_b->arrival_target){
+        return -1;
+    }
+    if(!individual_a->arrival_target&&individual_b->arrival_target){
+        return 1;
+    }
+    return individual_a->fitness-individual_b->fitness;
+}
+
+void find_best_individual(POPULATION*population){
+    qsort(population->individual,POPULATION_SIZE,sizeof(INDIVIDUAL),compare_individual);
+    if(population->generation==0||compare_individual(&population->individual[0],&population->best_individual)<0){
+        population->best_individual=population->individual[0];
+    }
+}
+
+void section(POPULATION*population){
+    INDIVIDUAL new_population[POPULATION_SIZE];
+    for(int i=0;i<ELITE_COUNT;i++){
+        new_population[i]=population->individual[i];
+    }
+    for(int i=ELITE_COUNT;i<POPULATION_SIZE;i++){
+        int candidate_1=rand()%POPULATION_SIZE;
+        int candidate_2=rand()%POPULATION_SIZE;
+        if(compare_individual(&population->individual[candidate_1].fitness,&population->individual[candidate_2].fitness)<0){
+            new_population[i]=population->individual[candidate_1];
+        }else{
+            new_population[i]=population->individual[candidate_2];
+        }
+    }
+    for(int i=0;i<POPULATION_SIZE;i++){
+        population->individual[i]=new_population[i];
+    }
+}
+
+void evaluate_population(POPULATION*population){
+    for(int i=0;i<POPULATION_SIZE;i++){
+        fitness_evaluate(&population->individual[i]);
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+//
+
+
 int main(){
     srand((unsigned)time(NULL));
     mate_initialization();
@@ -201,3 +391,146 @@ int main(){
     game_time();
     return 0;
 }
+/*
+//GA
+#define GENE_LENGTH 2000
+#define POPULATION_SIZE 200
+#define CROSSOVER_RATE 85
+#define MUTATE_RATE 5
+
+typedef struct{
+    int genes[GENE_LENGTH];
+    int fitness;
+    int path_length;
+    bool arrival_target;
+}INDIVIDUAL;
+typedef struct{
+    INDIVIDUAL individual[POPULATION_SIZE];
+    INDIVIDUAL best_individual;
+    int generation;
+}POPULATION;
+typedef enum{left=0,right,up,down}WAY;
+
+void population_initialization(POPULATION*population);
+void fitness_individual(INDIVIDUAL*individual);
+void crossover(INDIVIDUAL*parent1,INDIVIDUAL*parent2,INDIVIDUAL*child);
+void mutate(INDIVIDUAL*individual);
+void selction(POPULATION*population);
+
+void population_initialization(POPULATION*population){
+    for(int i=0;i<POPULATION_SIZE;i++){
+        for(int j=0;j<GENE_LENGTH;j++){
+            int way=rand()%4;
+            population->individual[i].genes[j]=way;
+        }
+        population->individual[i].arrival_target=false;
+        population->individual[i].path_length=0;
+        population->individual[i].fitness=0;
+    }
+}
+void fitness_individual(INDIVIDUAL*individual){
+    int simulate_line=OrginalLine,simulate_column=OrginalColumn;
+    int visit[LINE][COLUMN]={0};
+    visit[simulate_line][simulate_column]=1;
+    for(int i=0;i<GENE_LENGTH;i++){
+        switch(individual->genes[i]){
+            case left:
+                if(mate[simulate_line][simulate_column-1]==ROAD){
+                    visit[simulate_line][simulate_column-1]++;
+                    simulate_column--;
+                }else if(mate[simulate_line][simulate_column-1]==Target){
+                    individual->arrival_target=true;
+                    visit[simulate_line][simulate_column-1]++;
+                    simulate_column--;
+                    goto next;
+                }else{
+                    visit[simulate_line][simulate_column]++;
+                }
+                break;
+            case right:
+                if(mate[simulate_line][simulate_column+1]==ROAD){
+                    visit[simulate_line][simulate_column+1]++;
+                    simulate_column++;
+                }else if(mate[simulate_line][simulate_column-1]==Target){
+                    individual->arrival_target=true;
+                    visit[simulate_line][simulate_column+1]++;
+                    simulate_column++;
+                    goto next;
+                }else{
+                    visit[simulate_line][simulate_column]++;
+                }
+                break;
+            case up:
+                if(mate[simulate_line-1][simulate_column]==ROAD){
+                    visit[simulate_line-1][simulate_column]++;
+                    simulate_column--;
+                }else if(mate[simulate_line-1][simulate_column]==Target){
+                    individual->arrival_target=true;
+                    visit[simulate_line-1][simulate_column]++;
+                    simulate_column--;
+                    goto next;
+                }else{
+                    visit[simulate_line][simulate_column]++;
+                }
+                break;
+            case down:
+                if(mate[simulate_line+1][simulate_column]==ROAD){
+                    visit[simulate_line+1][simulate_column]++;
+                    simulate_column--;
+                }else if(mate[simulate_line+1][simulate_column]==Target){
+                    individual->arrival_target=true;
+                    visit[simulate_line+1][simulate_column]++;
+                    simulate_column--;
+                    goto next;
+                }else{
+                    visit[simulate_line][simulate_column]++;
+                }
+                break;
+                next : ;
+        }
+    }
+    int revisit=0;
+    for(int i=0;i<LINE;i++){
+        for(int j=0;j<COLUMN;j++){
+            if(visit[i][j]>1){
+                revisit++;
+            }
+        }
+    }
+    individual->path_length=GENE_LENGTH-revisit;
+    int distance_to_target=pow((COLUMN-2-simulate_column),2)+((LINE-2-simulate_line),2);
+    individual->fitness=1000000-distance_to_target-revisit*20+individual->path_length;
+}
+void crossover(INDIVIDUAL*parent1,INDIVIDUAL*parent2,INDIVIDUAL*child){
+    int whether_crossover=rand()%100;
+    if(whether_crossover>CROSSOVER_RATE){
+        for(int i=0;i<GENE_LENGTH;i++){
+            child->genes[i]=parent1->genes[i];
+            return;
+        }
+    }
+    int point1=rand()%(GENE_LENGTH/2);
+    int point2=point1+rand()%(GENE_LENGTH-point1);
+    for(int i=0;i<GENE_LENGTH;i++){
+        if(i<point1||i>point2){
+            child->genes[i]=parent1->genes[i];
+        }else{
+            child->genes[i]=parent2->genes[i];
+        }
+    }
+}   
+void mutate(INDIVIDUAL*individual){
+    for(int i=0;i<GENE_LENGTH;i++){
+        int whether_mutate=rand()%100;
+        if(whether_mutate<MUTATE_RATE){
+            int re_way=rand()%4;
+            individual->genes[i]=re_way;
+        }
+    }
+}
+void selction(POPULATION*population){
+    
+}
+
+//
+*/
