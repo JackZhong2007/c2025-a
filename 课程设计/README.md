@@ -1,3 +1,7 @@
+## 项目地址  
+https://github.com/JackZhong2007/c2025-AI-Five-son-paly.git
+
+
 ## 实验题目：五子棋AI
 
 ## GUI
